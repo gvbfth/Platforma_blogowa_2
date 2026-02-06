@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Blog Platform</title>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial; max-width: 800px; margin: 40px auto; padding: 20px; }
+        .post { border: 1px solid #ddd; padding: 15px; margin: 20px 0; border-radius: 5px; }
+        .comment { background: #f9f9f9; padding: 10px; margin: 10px 0; border-left: 3px solid #ccc; }
+        .comment-form { margin-top: 15px; }
+        .comment-form textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; }
+        .error { color: red; background: #ffe6e6; padding: 10px; border-radius: 4px; }
+        .success { color: green; background: #e6ffe6; padding: 10px; border-radius: 4px; }
+        input, textarea { width: 100%; margin: 5px 0; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 8px 15px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .auth { display: flex; gap: 20px; margin-bottom: 30px; }
+        .auth > div { flex: 1; padding: 15px; border: 1px solid #eee; border-radius: 5px; }
+        h1 { color: #333; }
+        h3 { color: #555; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        h5 { color: #777; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <h1>📝 Blog Platform</h1>
+    
+    <!-- Komunikaty -->
+    <div id="message"></div>
+    
+    <!-- Sekcja autoryzacji -->
+    <div class="auth">
+        <!-- Rejestracja -->
+        <div>
+            <h3>Rejestracja</h3>
+            <input id="reg_username" placeholder="Nazwa użytkownika (min. 3 znaki)" />
+            <input id="reg_email" placeholder="Email" />
+            <input id="reg_password" type="password" placeholder="Hasło (min. 8 znaków)" />
+            <button onclick="register()">Zarejestruj się</button>
+            <div id="reg_errors" class="error"></div>
+        </div>
+        
+        <!-- Logowanie -->
+        <div>
+            <h3>Logowanie</h3>
+            <input id="login_username" placeholder="Nazwa użytkownika" />
+            <input id="login_password" type="password" placeholder="Hasło" />
+            <button onclick="login()">Zaloguj się</button>
+            <button onclick="logout()" id="logoutBtn" style="display:none; background:#dc3545">Wyloguj</button>
+            <div id="login_errors" class="error"></div>
+            <div id="user_info"></div>
+        </div>
+    </div>
+    
+    <hr>
+    
+    <!-- Tworzenie posta (tylko dla zalogowanych) -->
+    <div id="create_post" style="display:none">
+        <h3>Nowy post</h3>
+        <input id="post_title" placeholder="Tytuł (min. 3 znaki)" />
+        <textarea id="post_content" placeholder="Treść posta (min. 10 znaków)" rows="4"></textarea>
+        <button onclick="createPost()">Opublikuj post</button>
+    </div>
+    
+    <!-- Lista postów -->
+    <div id="posts"></div>
+    
+    <script>
+        let currentUser = null;
+        
+        // Sprawdź status autoryzacji przy starcie
+        checkAuthStatus();
+        
+        // Funkcje API
+        
+        //async function apiRequest(url, method, data) {
+          //  const headers = {
+            //    'Content-Type': 'application/json'
+            //};
+            
+            //try {
+              //  const response = await fetch(url, {
+                //    method,
+                  //  headers,
+                    //body: data ? JSON.stringify(data) : null,
+                    //credentials: 'include'  // WAŻNE: wysyła cookies z żądaniem
+                //});
+                
+                // Logowanie błędów
+                //if (!response.ok) {
+                  //  console.error(`API Error ${response.status}: ${response.statusText}`);
+                //}
+                
+                //return response;
+            //} catch (error) {
+              //  console.error('Network error:', error);
+                //throw error;
+            //}
+        //}
+        async function apiRequest(url, method, data) {
+    const headers = {
+        'Content-Type': 'application/json'
+    };
+    
+    try {
+        const response = await fetch(url, {
+            method,
+            headers,
+            body: data ? JSON.stringify(data) : null,
+            credentials: 'include'  // WAŻNE: wysyła cookies z żądaniem
+        });
+        
+        // Debug logging
+        console.log(`${method} ${url} - Status: ${response.status}`);
+        
+        // Logowanie błędów
+        if (!response.ok) {
+            console.error(`API Error ${response.status}: ${response.statusText}`);
+            const errorText = await response.text();
+            console.error('Response:', errorText);
+        }
+        
+        return response;
+    } catch (error) {
+        console.error('Network error:', error);
+        throw error;
+    }
+}
+        // Sprawdź status autoryzacji
+        async function checkAuthStatus() {
+            try {
+                const response = await apiRequest('/api/auth/me', 'GET');
+                if (response.ok) {
+                    currentUser = await response.json();
+                    updateUI();
+                    loadPosts();
+                } else {
+                    currentUser = null;
+                    updateUI();
+                }
+            } catch (error) {
+                console.error('Auth check error:', error);
+                currentUser = null;
+                updateUI();
+            }
+        }
+        
+        // Rejestracja
+        async function register() {
+            const data = {
+                username: document.getElementById('reg_username').value,
+                email: document.getElementById('reg_email').value,
+                password: document.getElementById('reg_password').value
+            };
+            
+            const response = await apiRequest('/api/auth/register', 'POST', data);
+            const result = await response.json();
+            
+            if (response.ok) {
+                showMessage('Rejestracja udana! Teraz się zaloguj.', 'success');
+                document.getElementById('reg_errors').innerHTML = '';
+                // Wyczyść pola
+                document.getElementById('reg_username').value = '';
+                document.getElementById('reg_email').value = '';
+                document.getElementById('reg_password').value = '';
+                
+                // Po rejestracji backend ustawia cookies, więc sprawdź status
+                await checkAuthStatus();
+            } else {
+                document.getElementById('reg_errors').innerHTML = result.message || 'Błąd rejestracji';
+            }
+        }
+        
+        // Logowanie
+        async function login() {
+            const data = {
+                username: document.getElementById('login_username').value,
+                password: document.getElementById('login_password').value
+            };
+            
+            const response = await apiRequest('/api/auth/login', 'POST', data);
+            const result = await response.json();
+            
+            if (response.ok) {
+                showMessage('Zalogowano!', 'success');
+                document.getElementById('login_errors').innerHTML = '';
+                
+                // Backend ustawia tokeny w cookies, więc odświeżamy status
+                await checkAuthStatus();
+                
+                // Wyczyść pola
+                document.getElementById('login_username').value = '';
+                document.getElementById('login_password').value = '';
+            } else {
+                document.getElementById('login_errors').innerHTML = result.message || 'Błąd logowania';
+            }
+        }
+        
+        // Wylogowanie
+        async function logout() {
+            try {
+                const response = await apiRequest('/api/auth/logout', 'POST');
+                if (response.ok) {
+                    currentUser = null;
+                    updateUI();
+                    showMessage('Wylogowano.', 'success');
+                    loadPosts();
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+            }
+        }
+        
+        // Formatowanie daty - POPRAWIONE konwersja strefy czasowej
+        function formatDateTime(dateString) {
+            if (!dateString) return '';
+            try {
+                const date = new Date(dateString);
+                
+                // Jeśli data zawiera strefę czasową UTC, konwertuj do lokalnej
+                // Zamiast odejmować offset, użyj toLocaleString z odpowiednimi opcjami
+                const options = {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false, // 24-godzinny format
+                    timeZone: 'Europe/Warsaw' // Ustawienie na polską strefę czasową
+                };
+                
+                return new Intl.DateTimeFormat('pl-PL', options).format(date);
+            } catch (e) {
+                console.error('Błąd formatowania daty:', e, 'dateString:', dateString);
+                return dateString;
+            }
+        }
+        
+        // Załaduj posty
+        async function loadPosts() {
+            const response = await apiRequest('/api/posts', 'GET');
+            if (response.ok) {
+                const data = await response.json();
+                displayPosts(data.posts || []);
+            } else {
+                document.getElementById('posts').innerHTML = '<p class="error">Błąd ładowania postów</p>';
+            }
+        }
+        
+        // Wyświetl posty
+        function displayPosts(posts) {
+            const container = document.getElementById('posts');
+            container.innerHTML = '<h3>📚 Posty:</h3>';
+            
+            if (!posts || posts.length === 0) {
+                container.innerHTML += '<p><em>Brak postów</em></p>';
+                return;
+            }
+            
+            posts.forEach(post => {
+                const canDelete = currentUser && 
+                    (currentUser.id === post.author_id || currentUser.role === 'ADMIN');
+                
+                container.innerHTML += `
+                    <div class="post">
+                        <h4>${post.title || 'Brak tytułu'}</h4>
+                        <p>${post.content || ''}</p>
+                        <small>Autor: ${post.author?.username || 'Unknown'} | 
+                               Data: ${formatDateTime(post.created_at)}</small>
+                        
+                        ${canDelete ? `<button onclick="deletePost(${post.id})" style="background:#dc3545">Usuń</button>` : ''}
+                        
+                        <!-- Sekcja komentarzy -->
+                        <div id="comments_${post.id}">
+                            <h5>Komentarze:</h5>
+                            <div id="comments_list_${post.id}"></div>
+                            
+                            <!-- Formularz dodawania komentarza -->
+                            ${currentUser ? `
+                            <div class="comment-form">
+                                <textarea id="comment_input_${post.id}" 
+                                          placeholder="Napisz komentarz..." 
+                                          rows="2"></textarea>
+                                <button onclick="addComment(${post.id})">Dodaj komentarz</button>
+                            </div>
+                            ` : '<p><small>Zaloguj się, aby komentować</small></p>'}
+                        </div>
+                    </div>
+                `;
+                
+                // Załaduj istniejące komentarze
+                loadComments(post.id);
+            });
+        }
+        
+        // Utwórz post
+        async function createPost() {
+            const data = {
+                title: document.getElementById('post_title').value,
+                content: document.getElementById('post_content').value,
+                is_published: true
+            };
+            
+            const response = await apiRequest('/api/posts', 'POST', data);
+            if (response.ok) {
+                showMessage('Post utworzony!', 'success');
+                document.getElementById('post_title').value = '';
+                document.getElementById('post_content').value = '';
+                loadPosts();
+            } else {
+                const error = await response.json();
+                alert(error.message || 'Błąd tworzenia posta');
+            }
+        }
+        
+        // Usuń post
+        async function deletePost(postId) {
+            if (confirm('Czy na pewno usunąć ten post?')) {
+                const response = await apiRequest(`/api/posts/${postId}`, 'DELETE');
+                if (response.ok) {
+                    showMessage('Post usunięty!', 'success');
+                    loadPosts();
+                } else {
+                    const error = await response.json();
+                    alert(error.message || 'Błąd usuwania posta');
+                }
+            }
+        }
+        
+        // Dodaj komentarz
+        async function addComment(postId) {
+            const input = document.getElementById(`comment_input_${postId}`);
+            const content = input.value.trim();
+            
+            if (!content || content.length < 2) {
+                alert('Komentarz musi mieć co najmniej 2 znaki');
+                return;
+            }
+            
+            const response = await apiRequest(`/api/posts/${postId}/comments`, 'POST', { content });
+            
+            if (response.ok) {
+                const result = await response.json();
+                showMessage('Komentarz dodany!', 'success');
+                input.value = ''; // Wyczyść pole
+                loadComments(postId); // Przeładuj komentarze
+            } else {
+                const error = await response.json();
+                alert(error.message || 'Błąd dodawania komentarza');
+            }
+        }
+        
+        // Załaduj komentarze
+        async function loadComments(postId) {
+            const response = await apiRequest(`/api/posts/${postId}/comments`, 'GET');
+            
+            if (response.ok) {
+                const data = await response.json();
+                const commentList = document.getElementById(`comments_list_${postId}`);
+                
+                if (data.comments && data.comments.length > 0) {
+                    commentList.innerHTML = '';
+                    data.comments.forEach(comment => {
+                        // Poprawne formatowanie daty
+                        const dateStr = formatDateTime(comment.created_at);
+                        
+                        commentList.innerHTML += `
+                            <div class="comment">
+                                <strong>${comment.author_username || 'Unknown'}:</strong> 
+                                ${comment.content || ''}
+                                <small>${dateStr}</small>
+                            </div>
+                        `;
+                    });
+                } else {
+                    commentList.innerHTML = '<p><em>Brak komentarzy</em></p>';
+                }
+            }
+        }
+        
+        // Aktualizuj UI
+        function updateUI() {
+            document.getElementById('logoutBtn').style.display = currentUser ? 'block' : 'none';
+            document.getElementById('create_post').style.display = currentUser ? 'block' : 'none';
+            document.getElementById('login_errors').innerHTML = '';
+            
+            if (currentUser) {
+                document.getElementById('user_info').innerHTML = `
+                    <p>Zalogowany jako: <strong>${currentUser.username}</strong> (${currentUser.role})</p>
+                `;
+            } else {
+                document.getElementById('user_info').innerHTML = '';
+            }
+        }
+        
+        function showMessage(text, type) {
+            const msgDiv = document.getElementById('message');
+            msgDiv.innerHTML = `<div class="${type}">${text}</div>`;
+            setTimeout(() => msgDiv.innerHTML = '', 5000);
+        }
+        
+        // Załaduj posty na start
+        loadPosts();
+    </script>
+</body>
+</html>

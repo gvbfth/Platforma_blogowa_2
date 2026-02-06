@@ -1,0 +1,18 @@
+blog-platform/
+├── app.py                 # Główny plik aplikacji
+├── config.py              # Konfiguracja
+├── database.py            # Konfiguracja bazy danych
+├── requirements.txt       # Zależności Pythona
+├── run_app.bat           # Skrypt uruchomieniowy (Windows)
+├── .env                  # Zmienne środowiskowe 
+├── .env.example          # Przykładowe zmienne
+├── README.md             # Ta dokumentacja
+│
+├── migrations/           # Migracje bazy danych
+├── models/              # Modele SQLAlchemy
+├── routes/              # Endpointy API (Blueprints)
+├── services/            # Logika biznesowa
+├── utils/               # Narzędzia pomocnicze
+├── validators/          # Walidacja danych
+├── middleware/          # Middleware (CORS, rate limiting)
+└── templates/           # Szablony HTML (opcjonalnie)
